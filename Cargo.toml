@@ -1,0 +1,19 @@
+[package]
+name = "ssh-askpass-omarchy"
+version = "0.1.0"
+edition = "2024"
+description = "SSH askpass that asks through an Omarchy shell dialog"
+license = "MIT"
+authors = ["Laércio de Sousa <laercio@sivali.sousa.nom.br>"]
+publish = false
+
+[dependencies]
+nix = { version = "0.31", features = ["socket", "user"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = { version = "1.9", features = ["serde"] }
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"
