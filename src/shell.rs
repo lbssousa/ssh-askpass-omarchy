@@ -82,9 +82,30 @@ pub enum Outcome {
     Passphrase(Zeroizing<Vec<u8>>),
     /// Exit 0 without printing anything.
     Accepted,
-    /// Exit 1. The reason, if there is one, is one of our own fixed texts:
+    /// Exit 1. The reason, if there is one, is picked from a fixed set:
     /// nothing the dialog sent is ever echoed to stderr.
-    Rejected(Option<&'static str>),
+    Rejected(Option<Reason>),
+}
+
+/// Why the dialog refused. A plain enum, so the text shown for it is always
+/// one of our own literals (see [`Reason::text`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reason {
+    Busy,
+    TooLong,
+    Unsupported,
+    Other,
+}
+
+impl Reason {
+    pub fn text(self) -> &'static str {
+        match self {
+            Reason::Busy => "another dialog is already open",
+            Reason::TooLong => "the prompt is too long",
+            Reason::Unsupported => "the dialog doesn't understand this version of the request",
+            Reason::Other => "the dialog reported an error",
+        }
+    }
 }
 
 /// A reply that can't be used.
@@ -106,16 +127,14 @@ impl ResponseError {
     }
 }
 
-/// Why the dialog refused, in our words. Only the messages the plugin is
-/// known to send map to something specific.
-fn reject_reason(result: &str, message: Option<&str>) -> Option<&'static str> {
+/// Why the dialog refused. Only the messages the plugin is known to send
+/// map to something specific.
+fn reject_reason(result: &str, message: Option<&str>) -> Option<Reason> {
     match (result, message) {
-        ("busy", _) => Some("another dialog is already open"),
-        (_, Some("request too large" | "prompt too long")) => Some("the prompt is too long"),
-        (_, Some("invalid JSON" | "unsupported request")) => {
-            Some("the dialog doesn't understand this version of the request")
-        }
-        (_, Some(_)) => Some("the dialog reported an error"),
+        ("busy", _) => Some(Reason::Busy),
+        (_, Some("request too large" | "prompt too long")) => Some(Reason::TooLong),
+        (_, Some("invalid JSON" | "unsupported request")) => Some(Reason::Unsupported),
+        (_, Some(_)) => Some(Reason::Other),
         (_, None) => None,
     }
 }
@@ -235,10 +254,8 @@ mod tests {
             ] {
                 let line = format!(r#"{{"result":"{result}","password":"x"}}"#);
                 let out = parse_response(mode, line.as_bytes()).unwrap();
-                assert!(
-                    matches!(out, Outcome::Rejected(_)),
-                    "{mode:?} {result:?}: {out:?}"
-                );
+                let rejected = matches!(out, Outcome::Rejected(_));
+                assert!(rejected, "{mode:?} {result:?}");
             }
         }
     }
@@ -247,21 +264,19 @@ mod tests {
     fn rejections_are_explained_in_our_own_words() {
         let reason = |line: &str| match parse_response(Mode::Confirm, line.as_bytes()) {
             Ok(Outcome::Rejected(reason)) => reason,
-            other => panic!("{line}: {other:?}"),
+            _ => panic!("not a rejection: {line}"),
         };
         assert_eq!(reason(r#"{"result":"cancel"}"#), None);
-        assert_eq!(
-            reason(r#"{"result":"busy"}"#),
-            Some("another dialog is already open")
-        );
+        assert_eq!(reason(r#"{"result":"busy"}"#), Some(Reason::Busy));
         assert_eq!(
             reason(r#"{"result":"error","message":"prompt too long"}"#),
-            Some("the prompt is too long")
+            Some(Reason::TooLong)
         );
         assert_eq!(
             reason(r#"{"result":"error","message":"unsupported request"}"#),
-            Some("the dialog doesn't understand this version of the request")
+            Some(Reason::Unsupported)
         );
+        assert_eq!(Reason::Busy.text(), "another dialog is already open");
     }
 
     #[test]
@@ -269,7 +284,8 @@ mod tests {
         // The text could hold anything, so only fixed texts leave the process.
         let line = "{\"result\":\"error\",\"message\":\"boom \\u001b[2J\"}";
         let out = parse_response(Mode::Confirm, line.as_bytes()).unwrap();
-        assert_eq!(out, Outcome::Rejected(Some("the dialog reported an error")));
+        assert_eq!(out, Outcome::Rejected(Some(Reason::Other)));
+        assert_eq!(Reason::Other.text(), "the dialog reported an error");
     }
 
     #[test]

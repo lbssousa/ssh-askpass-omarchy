@@ -68,7 +68,7 @@ fn main() {
             }
         }
         Ok(Outcome::Accepted) => {}
-        Ok(Outcome::Rejected(Some(reason))) => fail(reason),
+        Ok(Outcome::Rejected(Some(reason))) => fail(reason.text()),
         Ok(Outcome::Rejected(None)) => process::exit(1),
         Err(err) => fail(err.describe()),
     }

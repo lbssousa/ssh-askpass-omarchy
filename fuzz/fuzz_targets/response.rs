@@ -32,7 +32,7 @@ fuzz_target!(|data: &[u8]| {
                 assert_ne!(mode, Mode::Passphrase);
                 assert!(granting_text, "a grant needs an \"ok\" result");
             }
-            Outcome::Rejected(Some(msg)) => assert!(!msg.contains('\u{1b}')),
+            Outcome::Rejected(Some(reason)) => assert!(!reason.text().is_empty()),
             Outcome::Rejected(None) => {}
         }
     }
