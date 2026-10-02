@@ -7,7 +7,7 @@ tagged.
 
 ## [Unreleased]
 
-This will be 0.2.0.
+## [0.2.0] - 2026-10-02
 
 ### Added
 - **Security key touch prompt.** When OpenSSH runs the askpass with
