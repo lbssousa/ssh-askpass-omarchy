@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "lbssousa.ssh_askpass",
+  "name": "SSH Askpass",
+  "version": "0.1.0",
+  "author": "Laércio de Sousa",
+  "description": "Theme-aware SSH Askpass dialog, styled like the polkit agent.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "SshAskpassService.qml"
+  }
+}
