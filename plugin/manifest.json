@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "lbssousa.ssh_askpass",
   "name": "SSH Askpass",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Laércio de Sousa",
-  "description": "Theme-aware SSH Askpass dialog, styled like the polkit agent.",
+  "description": "Theme-aware SSH Askpass dialog (passphrases, ssh-add -c confirmations and security key touch prompts), styled like the polkit agent.",
   "kinds": [
     "service"
   ],
