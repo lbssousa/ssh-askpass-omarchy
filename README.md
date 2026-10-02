@@ -81,6 +81,25 @@ export SSH_ASKPASS_REQUIRE=prefer
 | `just dev` | Runs the dialog in a separate Quickshell instance (`dev/`, which links the shell's `Commons`/`Ui`) on its own socket |
 | `just try [mode]` | Sends a sample `passphrase`, `confirm` or `touch` request through the `just dev` instance |
 
+## Releases
+
+`main` only takes squash-merged pull requests, which GitHub signs with its
+own key. A release is therefore a **GPG-signed tag** made by the maintainer
+on the merged commit. Check one with `git verify-tag vX.Y.Z` after
+importing the maintainer's public key.
+
+1. Open a PR that bumps the version in `Cargo.toml` (then run
+   `cargo update -w`) and `plugin/manifest.json`.
+   The same PR turns the "Unreleased" section of
+   [CHANGELOG.md](CHANGELOG.md) into the new version's release notes.
+   Merge it.
+2. Tag the merge commit and push the tag:
+   ```sh
+   git switch main && git pull
+   git tag -s vX.Y.Z -m "ssh-askpass-omarchy X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
 ## Feedback and contributing
 
 - **Bugs and feature requests:** [GitHub issues](https://github.com/lbssousa/ssh-askpass-omarchy/issues).
