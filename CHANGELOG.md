@@ -40,7 +40,8 @@ This will be 0.2.0.
 - The prompt is cleaned before it is shown: control characters,
   bidirectional overrides, zero-width characters and line separators are
   removed, blank lines collapse, and it is cut to 6 lines and 2000 bytes.
-  Messages from the dialog are cleaned before they reach stderr.
+  What the dialog sends back is never echoed to stderr; failures are
+  reported as fixed texts.
 - A prompt that isn't valid UTF-8 no longer aborts the binary (the build
   uses `panic = "abort"`).
 - The plugin refuses requests with a non-string or overlong prompt and

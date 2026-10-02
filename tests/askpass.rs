@@ -349,14 +349,23 @@ fn passphrase_mode_never_succeeds_without_a_password() {
 }
 
 #[test]
-fn dialog_messages_reach_stderr_cleaned() {
+fn what_the_dialog_says_is_never_echoed_to_stderr() {
     let dialog = fake_dialog(Answer::Line(
-        "{\"result\":\"error\",\"message\":\"bad\\u001b[31m request\"}".into(),
+        "{\"result\":\"error\",\"message\":\"bad \\u001b[31m request\"}".into(),
     ));
     let out = run(&dialog, None, "p");
+    assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("bad[31m request"), "{err:?}");
-    assert!(!err.contains('\u{1b}'));
+    assert!(err.contains("the dialog reported an error"), "{err:?}");
+    assert!(!err.contains("bad") && !err.contains('\u{1b}'), "{err:?}");
+}
+
+#[test]
+fn a_busy_dialog_is_explained() {
+    let dialog = fake_dialog(Answer::Line(r#"{"result":"busy"}"#.into()));
+    let out = run(&dialog, Some("confirm"), "Allow?");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already open"));
 }
 
 #[test]

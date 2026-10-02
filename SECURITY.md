@@ -65,8 +65,8 @@ something: each wrong PIN uses up one of a limited number of tries.
 - The prompt is cleaned before it reaches the dialog: control characters,
   text-reordering and zero-width characters are removed, blank lines
   collapse, and it's cut to 6 lines and 2000 bytes. It's rendered as plain
-  text, never rich text. Messages the dialog sends back are cleaned the
-  same way before they reach stderr.
+  text, never rich text. What the dialog sends back is never echoed to
+  stderr: failures are reported as fixed texts.
 - The prompt argument isn't assumed to be UTF-8, so a key comment with
   stray bytes can't crash the binary.
 - Bounded input: 64 KiB dialog replies and 16 KiB plugin requests.

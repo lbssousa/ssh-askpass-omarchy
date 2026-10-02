@@ -11,7 +11,7 @@ use serde::Deserialize;
 use zeroize::Zeroizing;
 
 use crate::request::Mode;
-use crate::text::{percent_decode_into, sanitize_prompt};
+use crate::text::percent_decode_into;
 
 pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
@@ -82,22 +82,60 @@ pub enum Outcome {
     Passphrase(Zeroizing<Vec<u8>>),
     /// Exit 0 without printing anything.
     Accepted,
-    /// Exit 1; the plugin may have said why.
-    Rejected(Option<String>),
+    /// Exit 1. The reason, if there is one, is one of our own fixed texts:
+    /// nothing the dialog sent is ever echoed to stderr.
+    Rejected(Option<&'static str>),
+}
+
+/// A reply that can't be used.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ResponseError {
+    /// Not the JSON object the protocol defines (or the password has JSON
+    /// escapes, which are refused on purpose).
+    Invalid,
+    /// An "ok" for a passphrase prompt, with nothing to print.
+    NothingToPrint,
+}
+
+impl ResponseError {
+    pub fn describe(&self) -> &'static str {
+        match self {
+            ResponseError::Invalid => "invalid response from the dialog",
+            ResponseError::NothingToPrint => "the dialog accepted the prompt without an answer",
+        }
+    }
+}
+
+/// Why the dialog refused, in our words. Only the messages the plugin is
+/// known to send map to something specific.
+fn reject_reason(result: &str, message: Option<&str>) -> Option<&'static str> {
+    match (result, message) {
+        ("busy", _) => Some("another dialog is already open"),
+        (_, Some("request too large" | "prompt too long")) => Some("the prompt is too long"),
+        (_, Some("invalid JSON" | "unsupported request")) => {
+            Some("the dialog doesn't understand this version of the request")
+        }
+        (_, Some(_)) => Some("the dialog reported an error"),
+        (_, None) => None,
+    }
 }
 
 /// Interprets one response line (without the trailing newline). Only
 /// `"ok"` accepts anything; any other result, known or not, rejects. A
 /// password the dialog sends in a mode that doesn't take one is dropped.
-pub fn parse_response(mode: Mode, line: &[u8]) -> Result<Outcome, String> {
-    let raw: RawResponse =
-        serde_json::from_slice(line).map_err(|err| format!("invalid json response: {err}"))?;
+pub fn parse_response(mode: Mode, line: &[u8]) -> Result<Outcome, ResponseError> {
+    let raw: RawResponse = serde_json::from_slice(line).map_err(|_| ResponseError::Invalid)?;
     if raw.result != "ok" {
-        return Ok(Outcome::Rejected(raw.message.map(|m| sanitize_prompt(&m))));
+        return Ok(Outcome::Rejected(reject_reason(
+            raw.result,
+            raw.message.as_deref(),
+        )));
     }
     match mode {
         Mode::Passphrase => {
-            let encoded = raw.password.ok_or("dialog sent no password")?;
+            let Some(encoded) = raw.password else {
+                return Err(ResponseError::NothingToPrint);
+            };
             let mut pw = Zeroizing::new(Vec::with_capacity(encoded.len()));
             percent_decode_into(encoded.as_bytes(), &mut pw);
             Ok(Outcome::Passphrase(pw))
@@ -110,7 +148,7 @@ pub fn parse_response(mode: Mode, line: &[u8]) -> Result<Outcome, String> {
 mod tests {
     use super::*;
 
-    fn pass(line: &str) -> Result<Outcome, String> {
+    fn pass(line: &str) -> Result<Outcome, ResponseError> {
         parse_response(Mode::Passphrase, line.as_bytes())
     }
 
@@ -161,7 +199,10 @@ mod tests {
 
     #[test]
     fn ok_without_a_password_is_an_error_in_passphrase_mode() {
-        assert!(pass(r#"{"result":"ok"}"#).is_err());
+        assert_eq!(
+            pass(r#"{"result":"ok"}"#),
+            Err(ResponseError::NothingToPrint)
+        );
     }
 
     #[test]
@@ -194,19 +235,41 @@ mod tests {
             ] {
                 let line = format!(r#"{{"result":"{result}","password":"x"}}"#);
                 let out = parse_response(mode, line.as_bytes()).unwrap();
-                assert_eq!(out, Outcome::Rejected(None), "{mode:?} {result:?}");
+                assert!(
+                    matches!(out, Outcome::Rejected(_)),
+                    "{mode:?} {result:?}: {out:?}"
+                );
             }
         }
     }
 
     #[test]
-    fn rejections_carry_a_cleaned_message() {
-        let out = parse_response(
-            Mode::Confirm,
-            "{\"result\":\"error\",\"message\":\"bo\\u001bom\"}".as_bytes(),
-        )
-        .unwrap();
-        assert_eq!(out, Outcome::Rejected(Some("boom".into())));
+    fn rejections_are_explained_in_our_own_words() {
+        let reason = |line: &str| match parse_response(Mode::Confirm, line.as_bytes()) {
+            Ok(Outcome::Rejected(reason)) => reason,
+            other => panic!("{line}: {other:?}"),
+        };
+        assert_eq!(reason(r#"{"result":"cancel"}"#), None);
+        assert_eq!(
+            reason(r#"{"result":"busy"}"#),
+            Some("another dialog is already open")
+        );
+        assert_eq!(
+            reason(r#"{"result":"error","message":"prompt too long"}"#),
+            Some("the prompt is too long")
+        );
+        assert_eq!(
+            reason(r#"{"result":"error","message":"unsupported request"}"#),
+            Some("the dialog doesn't understand this version of the request")
+        );
+    }
+
+    #[test]
+    fn what_the_dialog_says_is_never_repeated() {
+        // The text could hold anything, so only fixed texts leave the process.
+        let line = "{\"result\":\"error\",\"message\":\"boom \\u001b[2J\"}";
+        let out = parse_response(Mode::Confirm, line.as_bytes()).unwrap();
+        assert_eq!(out, Outcome::Rejected(Some("the dialog reported an error")));
     }
 
     #[test]

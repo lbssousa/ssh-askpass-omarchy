@@ -13,6 +13,8 @@ use ssh_askpass_omarchy::shell::{
 };
 use zeroize::Zeroizing;
 
+/// Reports a failure and exits. Only our own fixed texts and errors from
+/// the operating system get here; nothing the dialog sent does.
 fn fail(msg: impl std::fmt::Display) -> ! {
     eprintln!("ssh-askpass-omarchy: {msg}");
     process::exit(1);
@@ -66,8 +68,8 @@ fn main() {
             }
         }
         Ok(Outcome::Accepted) => {}
-        Ok(Outcome::Rejected(Some(msg))) => fail(format_args!("dialog error: {msg}")),
+        Ok(Outcome::Rejected(Some(reason))) => fail(reason),
         Ok(Outcome::Rejected(None)) => process::exit(1),
-        Err(err) => fail(err),
+        Err(err) => fail(err.describe()),
     }
 }
