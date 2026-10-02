@@ -5,9 +5,13 @@ import Quickshell.Io
 Item {
   id: root
 
-  readonly property int protocolVersion: 1
-  readonly property int maxRequestBytes: 65536
+  readonly property int protocolVersion: 2
+  readonly property var modes: ["passphrase", "confirm", "notify"]
+  // The binary cuts prompts to 2000 bytes, so a longer request isn't from it.
+  readonly property int maxRequestBytes: 16384
+  readonly property int maxPromptChars: 2000
   property var activeConn: null
+  property string activeMode: ""
 
   function reply(conn, response) {
     conn.write(JSON.stringify(response) + "\n")
@@ -30,8 +34,13 @@ Item {
       reply(conn, { result: "error", message: "invalid JSON" })
       return
     }
-    if (!req || req.v !== protocolVersion) {
+    if (!req || req.v !== protocolVersion || modes.indexOf(req.mode) === -1
+        || (req.prompt !== undefined && typeof req.prompt !== "string")) {
       reply(conn, { result: "error", message: "unsupported request" })
+      return
+    }
+    if (req.prompt && req.prompt.length > maxPromptChars) {
+      reply(conn, { result: "error", message: "prompt too long" })
       return
     }
     if (activeConn) {
@@ -39,15 +48,18 @@ Item {
       return
     }
     activeConn = conn
+    activeMode = req.mode
     dialog.open(req)
   }
 
   function finish(result, password) {
     var conn = activeConn
+    var mode = activeMode
     activeConn = null
+    activeMode = ""
     if (!conn) return
     var response = { result: result }
-    if (result === "ok") {
+    if (result === "ok" && mode === "passphrase") {
       try {
         response.password = encodeURIComponent(password)
       } catch (e) {
@@ -74,6 +86,7 @@ Item {
       onConnectionStateChanged: {
         if (!connected && root.activeConn === conn) {
           root.activeConn = null
+          root.activeMode = ""
           dialog.close()
         }
       }
