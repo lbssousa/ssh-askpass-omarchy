@@ -9,6 +9,9 @@ Item {
 
   signal finished(string result, string password)
 
+  // "passphrase" (type and press Enter), "confirm" (Allow/Deny, for
+  // ssh-add -c) or "notify" (a message OpenSSH dismisses by killing us).
+  property string mode: "passphrase"
   property string prompt: ""
   property bool shown: false
   property bool closing: false
@@ -23,11 +26,14 @@ Item {
   property var borderSpec: Border.surfaceSpec("polkit", errorFlash ? "border-error" : "border", errorFlash ? Color.polkit.borderError : Color.polkit.border, Math.max(1, Style.space(2)), "border-alpha")
   readonly property int contentMargin: Style.spacing.panelPadding
   readonly property int fieldHeight: Math.max(Style.space(42), Style.spacing.controlHeight)
+  // OpenSSH's notifier for FIDO keys: "Confirm user presence for key …".
+  readonly property bool touchMode: mode === "notify" && /user presence/i.test(prompt)
   readonly property int cardWidth: Math.min(Style.space(420), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
 
   function open(req) {
     closeTimer.stop()
     closing = false
+    mode = String(req.mode || "passphrase")
     prompt = String(req.prompt || "")
     clearInputs()
     shown = true
@@ -48,14 +54,19 @@ Item {
 
   function respond(result) {
     if (!shown) return
-    var password = passwordField.input.text
+    // Only an answered passphrase prompt hands the typed text over; a
+    // cancel or a confirmation never touches it.
+    var password = result === "ok" && mode === "passphrase" ? passwordField.input.text : ""
     close()
     finished(result, password)
   }
 
   function refocus() {
     if (!shown) return
-    passwordField.input.forceActiveFocus()
+    if (mode === "passphrase") passwordField.input.forceActiveFocus()
+    else if (mode === "confirm") {
+      if (!allowButton.activeFocus) denyButton.forceActiveFocus()
+    } else keyCatcher.forceActiveFocus()
   }
 
   function triggerFailureFeedback() {
@@ -214,7 +225,9 @@ Item {
             root.respond("cancel")
             event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            root.respond("ok")
+            // Only the passphrase field submits on Enter; a confirmation
+            // takes an explicit Allow.
+            if (root.mode === "passphrase") root.respond("ok")
             event.accepted = true
           }
         }
@@ -229,6 +242,50 @@ Item {
         anchors.leftMargin: card.contentLeftInset
         spacing: Style.space(10)
 
+        // Escape from a focused button (the key catcher only sees keys
+        // while it has focus itself).
+        Keys.onEscapePressed: function(event) {
+          root.respond("cancel")
+          event.accepted = true
+        }
+
+        Row {
+          visible: root.touchMode
+          width: parent.width
+          height: root.fieldHeight
+          spacing: Style.space(14)
+
+          OpticalGlyph {
+            id: touchGlyph
+            width: Style.space(26)
+            height: parent.height
+            text: "\udb80\udf06"
+            fontFamily: root.fontFamily
+            fontSize: Style.font.iconLarge
+            color: root.accent
+
+            SequentialAnimation on opacity {
+              running: root.touchMode && root.shown
+              loops: Animation.Infinite
+              onStopped: touchGlyph.opacity = 1
+              NumberAnimation { to: 0.35; duration: 700; easing.type: Easing.InOutSine }
+              NumberAnimation { to: 1; duration: 700; easing.type: Easing.InOutSine }
+            }
+          }
+
+          Text {
+            width: parent.width - Style.space(40)
+            height: parent.height
+            textFormat: Text.PlainText
+            text: "Touch your security key"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.iconLarge
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+          }
+        }
+
         Text {
           width: parent.width
           visible: text.length > 0
@@ -236,14 +293,48 @@ Item {
           text: root.prompt
           wrapMode: Text.Wrap
           color: root.foreground
+          opacity: root.touchMode ? 0.7 : 1
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
         }
 
         PasswordField {
           id: passwordField
-          placeholder: "Passphrase"
+          visible: root.mode === "passphrase"
+          placeholder: /\bPIN\b/.test(root.prompt) ? "PIN" : "Passphrase"
           onAccepted: root.respond("ok")
+        }
+
+        Row {
+          visible: root.mode !== "passphrase" && !root.touchMode
+          anchors.right: parent.right
+          spacing: Style.spacing.controlGap
+
+          Button {
+            id: denyButton
+            visible: root.mode === "confirm"
+            text: "Deny"
+            bordered: true
+            focusable: true
+            onClicked: root.respond("cancel")
+          }
+          Button {
+            id: allowButton
+            visible: root.mode === "confirm"
+            text: "Allow"
+            bordered: true
+            focusable: true
+            selected: true
+            onClicked: root.respond("ok")
+          }
+          Button {
+            visible: root.mode === "notify"
+            text: "Dismiss"
+            bordered: true
+            focusable: true
+            selected: true
+            onClicked: root.respond("cancel")
+          }
         }
       }
     }

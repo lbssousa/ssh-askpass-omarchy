@@ -1,0 +1,37 @@
+[package]
+name = "ssh-askpass-omarchy-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ssh-askpass-omarchy = { path = ".." }
+
+# Kept out of the main crate's build (and its cargo-deny graph).
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "response"
+path = "fuzz_targets/response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sanitize"
+path = "fuzz_targets/sanitize.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "percent_decode"
+path = "fuzz_targets/percent_decode.rs"
+test = false
+doc = false
+bench = false
